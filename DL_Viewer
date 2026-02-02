@@ -1,0 +1,973 @@
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk
+from PIL import Image, ImageTk, ImageDraw, ImageFont
+import json
+import base64
+import io
+import os
+from datetime import datetime, timedelta
+
+DATE_FMT = "%m/%d/%Y"
+
+
+# ============ ADVANCED DATA STRUCTURES ============
+
+class TrieNode:
+    """Node for Trie data structure."""
+    def __init__(self):
+        self.children = {}
+        self.dl_indices = set()
+        self.is_end_of_word = False
+
+
+class Trie:
+    """Trie for efficient prefix searching of DL records."""
+    def __init__(self):
+        self.root = TrieNode()
+    
+    def insert(self, word, dl_index):
+        """Insert a word and associate it with a DL index."""
+        word = word.lower()
+        node = self.root
+        
+        for char in word:
+            if char not in node.children:
+                node.children[char] = TrieNode()
+            node = node.children[char]
+            node.dl_indices.add(dl_index)
+        
+        node.is_end_of_word = True
+    
+    def search_substring(self, substring):
+        """Find all DL indices containing the substring anywhere."""
+        substring = substring.lower()
+        results = set()
+        
+        def dfs(node, current_word):
+            if substring in current_word:
+                results.update(node.dl_indices)
+            
+            for char, child in node.children.items():
+                dfs(child, current_word + char)
+        
+        dfs(self.root, "")
+        return results
+
+
+class BSTNode:
+    """Node for Binary Search Tree."""
+    def __init__(self, key, dl_data):
+        self.key = key
+        self.dl_data = dl_data
+        self.left = None
+        self.right = None
+        self.height = 1
+
+
+class AVLTree:
+    """Self-balancing BST (AVL Tree) for sorted DL storage."""
+    def __init__(self):
+        self.root = None
+        self.size = 0
+    
+    def get_height(self, node):
+        if not node:
+            return 0
+        return node.height
+    
+    def get_balance(self, node):
+        if not node:
+            return 0
+        return self.get_height(node.left) - self.get_height(node.right)
+    
+    def rotate_right(self, y):
+        x = y.left
+        T2 = x.right
+        
+        x.right = y
+        y.left = T2
+        
+        y.height = max(self.get_height(y.left), self.get_height(y.right)) + 1
+        x.height = max(self.get_height(x.left), self.get_height(x.right)) + 1
+        
+        return x
+    
+    def rotate_left(self, x):
+        y = x.right
+        T2 = y.left
+        
+        y.left = x
+        x.right = T2
+        
+        x.height = max(self.get_height(x.left), self.get_height(x.right)) + 1
+        y.height = max(self.get_height(y.left), self.get_height(y.right)) + 1
+        
+        return y
+    
+    def insert(self, root, key, dl_data):
+        if not root:
+            self.size += 1
+            return BSTNode(key, dl_data)
+        
+        if key < root.key:
+            root.left = self.insert(root.left, key, dl_data)
+        elif key > root.key:
+            root.right = self.insert(root.right, key, dl_data)
+        else:
+            root.dl_data = dl_data
+            return root
+        
+        root.height = max(self.get_height(root.left), self.get_height(root.right)) + 1
+        balance = self.get_balance(root)
+        
+        if balance > 1 and key < root.left.key:
+            return self.rotate_right(root)
+        
+        if balance < -1 and key > root.right.key:
+            return self.rotate_left(root)
+        
+        if balance > 1 and key > root.left.key:
+            root.left = self.rotate_left(root.left)
+            return self.rotate_right(root)
+        
+        if balance < -1 and key < root.right.key:
+            root.right = self.rotate_right(root.right)
+            return self.rotate_left(root)
+        
+        return root
+    
+    def add(self, key, dl_data):
+        """Public method to insert a DL record."""
+        self.root = self.insert(self.root, key, dl_data)
+    
+    def inorder_traversal(self, node, result):
+        """In-order traversal to get sorted list."""
+        if node:
+            self.inorder_traversal(node.left, result)
+            result.append(node.dl_data)
+            self.inorder_traversal(node.right, result)
+    
+    def get_sorted_list(self):
+        """Return all DL records in sorted order."""
+        result = []
+        self.inorder_traversal(self.root, result)
+        return result
+
+
+class LinkedListNode:
+    """Node for doubly linked list."""
+    def __init__(self, data):
+        self.data = data
+        self.next = None
+        self.prev = None
+
+
+class DoublyLinkedList:
+    """Doubly linked list for maintaining filtered results."""
+    def __init__(self):
+        self.head = None
+        self.tail = None
+        self.size = 0
+    
+    def append(self, data):
+        """Add element to the end of the list."""
+        new_node = LinkedListNode(data)
+        
+        if not self.head:
+            self.head = new_node
+            self.tail = new_node
+        else:
+            self.tail.next = new_node
+            new_node.prev = self.tail
+            self.tail = new_node
+        
+        self.size += 1
+    
+    def to_list(self):
+        """Convert to Python list for display."""
+        result = []
+        current = self.head
+        while current:
+            result.append(current.data)
+            current = current.next
+        return result
+    
+    def clear(self):
+        """Clear the list."""
+        self.head = None
+        self.tail = None
+        self.size = 0
+
+
+class MinHeap:
+    """Min heap for priority-based search results."""
+    def __init__(self):
+        self.heap = []
+    
+    def parent(self, i):
+        return (i - 1) // 2
+    
+    def left_child(self, i):
+        return 2 * i + 1
+    
+    def right_child(self, i):
+        return 2 * i + 2
+    
+    def swap(self, i, j):
+        self.heap[i], self.heap[j] = self.heap[j], self.heap[i]
+    
+    def heapify_up(self, i):
+        while i > 0 and self.heap[self.parent(i)][0] > self.heap[i][0]:
+            self.swap(i, self.parent(i))
+            i = self.parent(i)
+    
+    def heapify_down(self, i):
+        min_index = i
+        left = self.left_child(i)
+        right = self.right_child(i)
+        
+        if left < len(self.heap) and self.heap[left][0] < self.heap[min_index][0]:
+            min_index = left
+        
+        if right < len(self.heap) and self.heap[right][0] < self.heap[min_index][0]:
+            min_index = right
+        
+        if i != min_index:
+            self.swap(i, min_index)
+            self.heapify_down(min_index)
+    
+    def insert(self, priority, data):
+        """Insert element with priority."""
+        self.heap.append((priority, data))
+        self.heapify_up(len(self.heap) - 1)
+    
+    def extract_min(self):
+        """Extract element with highest relevance."""
+        if not self.heap:
+            return None
+        
+        if len(self.heap) == 1:
+            return self.heap.pop()[1]
+        
+        root = self.heap[0][1]
+        self.heap[0] = self.heap.pop()
+        self.heapify_down(0)
+        
+        return root
+    
+    def get_sorted_list(self):
+        """Get all elements sorted by priority."""
+        result = []
+        temp_heap = self.heap.copy()
+        
+        while self.heap:
+            result.append(self.extract_min())
+        
+        self.heap = temp_heap
+        return result
+
+
+# ============ DL EDITOR WINDOW ============
+
+def empty_base64_image():
+    """Create a valid black square PNG encoded as base64."""
+    img = Image.new("RGB", (200, 200), "black")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+class DLEditorWindow:
+    """Standalone editor window for a single DL."""
+    def __init__(self, parent, filepath, on_save_callback=None):
+        self.window = tk.Toplevel(parent)
+        self.window.title("Driver License Editor")
+        self.window.geometry("920x540")
+        
+        self.filepath = filepath
+        self.on_save_callback = on_save_callback
+        self.data = None
+        self.editing = False
+        self.photo = None
+        self.image_label = None
+        self.is_suspended = False
+        self.fields = {}
+        
+        # Load and build UI first
+        if not self.load_data():
+            return
+        
+        self.build_ui()
+        
+        # Force window to update before displaying
+        self.window.update_idletasks()
+        
+        # Auto-enable edit mode BEFORE displaying (so image click works)
+        self.editing = False  # Start false
+        self.edit_toggle.select()
+        
+        try:
+            self.display_dl()
+        except Exception as e:
+            messagebox.showerror("Display Error", f"Failed to display DL: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        # Now toggle to enable editing
+        self.toggle_edit()
+    
+    def load_data(self):
+        """Load DL data from file."""
+        try:
+            with open(self.filepath, "r") as f:
+                self.data = json.load(f)
+            self.check_suspension()
+            return True
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load file: {e}")
+            self.window.destroy()
+            return False
+    
+    def build_ui(self):
+        """Build the editor UI."""
+        top = tk.Frame(self.window)
+        top.pack(fill="x", padx=6, pady=6)
+        
+        tk.Label(top, text=f"Editing: {os.path.basename(self.filepath)}").pack(side="left", padx=4)
+        
+        self.save_btn = tk.Button(top, text="Save", command=self.save_dl, state="disabled")
+        self.save_btn.pack(side="right", padx=4)
+        
+        self.edit_toggle = tk.Checkbutton(
+            top, text="Edit", command=self.toggle_edit
+        )
+        self.edit_toggle.pack(side="right")
+        
+        self.main = tk.Frame(self.window)
+        self.main.pack(fill="both", expand=True)
+        
+        self.left = tk.Frame(self.main, width=230)
+        self.left.pack(side="left", fill="y", padx=10)
+        
+        self.right = tk.Frame(self.main)
+        self.right.pack(side="right", fill="both", expand=True, padx=10)
+    
+    def check_suspension(self):
+        """Check if license should be suspended."""
+        self.is_suspended = False
+        
+        try:
+            if not self.data.get("DOB") or not self.data.get("AssDate") or not self.data.get("ExpDate"):
+                return
+                
+            dob = datetime.strptime(self.data["DOB"], DATE_FMT)
+            ass = datetime.strptime(self.data["AssDate"], DATE_FMT)
+            exp = datetime.strptime(self.data["ExpDate"], DATE_FMT)
+            
+            if ass < dob + timedelta(days=16 * 365):
+                self.is_suspended = True
+            if datetime.now() >= exp:
+                self.is_suspended = True
+            if int(self.data.get("Strikes", 0)) >= 15:
+                self.is_suspended = True
+            if int(self.data.get("Vision", 1)) == 0:
+                self.is_suspended = True
+        except Exception:
+            pass
+        
+        if self.is_suspended:
+            self.data["Suspended"] = 1
+    
+    def display_dl(self):
+        """Display the DL information."""
+        try:
+            for w in self.left.winfo_children():
+                w.destroy()
+            for w in self.right.winfo_children():
+                w.destroy()
+            
+            donor_bg = "#d4af37" if int(self.data.get("Donor", 0)) == 1 else None
+            bg_color = donor_bg if donor_bg else "SystemButtonFace"
+            
+            self.main.config(bg=bg_color)
+            self.left.config(bg=bg_color)
+            self.right.config(bg=bg_color)
+            
+            # Display image first
+            self.display_image()
+            
+            # Clear and rebuild fields
+            self.fields.clear()
+            
+            for key, val in self.data.items():
+                if key == "Image":
+                    continue
+                
+                row = tk.Frame(self.right, bg=bg_color)
+                row.pack(fill="x", pady=2)
+                
+                tk.Label(row, text=key, width=12, anchor="w", bg=bg_color).pack(side="left")
+                
+                ent = tk.Entry(row)
+                ent.insert(0, str(val))
+                ent.config(state="readonly")
+                ent.pack(side="left", fill="x", expand=True)
+                
+                self.fields[key] = ent
+        except Exception as e:
+            messagebox.showerror("Display Error", f"Error in display_dl: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def display_image(self):
+        """Display the DL image."""
+        try:
+            raw = base64.b64decode(self.data["Image"])
+            img = Image.open(io.BytesIO(raw))
+            img = img.resize((200, 200))
+            
+            if self.is_suspended:
+                img = self.add_suspended_stamp(img)
+            
+            self.photo = ImageTk.PhotoImage(img)
+            self.image_label = tk.Label(self.left, image=self.photo, cursor="hand2")
+            self.image_label.pack(pady=20)
+            
+            self.image_label.bind("<Button-1>", self.on_image_click)
+        except Exception as e:
+            # Show error if image fails to load, but still allow clicking to fix it
+            error_label = tk.Label(self.left, text=f"Image Error\nClick to set image", 
+                                  bg="red", fg="white", width=25, height=10, cursor="hand2")
+            error_label.pack(pady=20)
+            error_label.bind("<Button-1>", self.on_image_click)  # Allow fixing the image!
+    
+    def add_suspended_stamp(self, img):
+        """Add red SUSPENDED stamp."""
+        img = img.copy()
+        draw = ImageDraw.Draw(img)
+        
+        width, height = img.size
+        
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36)
+        except:
+            try:
+                font = ImageFont.truetype("arial.ttf", 36)
+            except:
+                font = ImageFont.load_default()
+        
+        text = "SUSPENDED"
+        temp_img = Image.new('RGBA', img.size, (0, 0, 0, 0))
+        temp_draw = ImageDraw.Draw(temp_img)
+        
+        bbox = temp_draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        
+        x = (width - text_width) // 2
+        y = (height - text_height) // 2
+        
+        outline_color = (255, 255, 255, 255)
+        text_color = (255, 0, 0, 255)
+        
+        for adj_x in range(-2, 3):
+            for adj_y in range(-2, 3):
+                temp_draw.text((x + adj_x, y + adj_y), text, font=font, fill=outline_color)
+        
+        temp_draw.text((x, y), text, font=font, fill=text_color)
+        rotated = temp_img.rotate(-30, expand=False)
+        img.paste(rotated, (0, 0), rotated)
+        
+        return img
+    
+    def on_image_click(self, event):
+        """Allow image selection when editing."""
+        print(f"Image clicked! Editing mode: {self.editing}")  # Debug
+        
+        if not self.editing:
+            messagebox.showinfo("Not in Edit Mode", "Please enable the 'Edit' checkbox to change the image.")
+            return
+        
+        path = filedialog.askopenfilename(
+            title="Select Image",
+            filetypes=[("Images", "*.png *.jpg *.jpeg")]
+        )
+        if not path:
+            return
+        
+        try:
+            img = Image.open(path)
+            img = self.crop_square(img).resize((200, 200))
+            
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            self.data["Image"] = base64.b64encode(buf.getvalue()).decode()
+            
+            self.display_dl()
+        except Exception as e:
+            messagebox.showerror("Image Error", f"Failed to load image: {e}")
+    
+    def toggle_edit(self):
+        """Toggle edit mode."""
+        self.editing = not self.editing
+        print(f"Toggle edit called! Now editing: {self.editing}")  # Debug
+        
+        for ent in self.fields.values():
+            ent.config(state="normal" if self.editing else "readonly")
+        
+        self.save_btn.config(state="normal" if self.editing else "disabled")
+    
+    def save_dl(self):
+        """Save the DL."""
+        try:
+            old_dlid = self.data.get("DLID", "")
+            
+            for key, ent in self.fields.items():
+                val = ent.get()
+                if key in ("Vision", "Strikes", "Donor", "Suspended"):
+                    val = int(val)
+                self.data[key] = val
+            
+            self.check_suspension()
+            
+            new_dlid = self.data.get("DLID", "")
+            filepath = self.filepath
+            
+            if new_dlid and new_dlid != old_dlid:
+                directory = os.path.dirname(filepath)
+                new_filename = f"{new_dlid}.json"
+                new_filepath = os.path.join(directory, new_filename)
+                
+                if os.path.exists(new_filepath) and new_filepath != filepath:
+                    response = messagebox.askyesno(
+                        "File Exists",
+                        f"{new_filename} already exists. Overwrite?"
+                    )
+                    if not response:
+                        return
+                
+                if new_filepath != filepath:
+                    try:
+                        os.remove(filepath)
+                    except:
+                        pass
+                
+                filepath = new_filepath
+                self.filepath = filepath
+            
+            with open(filepath, "w") as f:
+                json.dump(self.data, f, indent=4)
+            
+            messagebox.showinfo("Saved", "DL saved successfully")
+            self.edit_toggle.deselect()
+            self.toggle_edit()
+            self.display_dl()
+            
+            # Call callback to refresh viewer
+            if self.on_save_callback:
+                self.on_save_callback()
+            
+        except Exception as e:
+            messagebox.showerror("Save Failed", str(e))
+    
+    @staticmethod
+    def crop_square(img):
+        """Crop an image to a centered square."""
+        w, h = img.size
+        s = min(w, h)
+        x = (w - s) // 2
+        y = (h - s) // 2
+        return img.crop((x, y, x + s, y + s))
+
+
+# ============ MAIN VIEWER APPLICATION ============
+
+class DLViewer:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Driver License Directory Viewer")
+        self.root.geometry("1000x600")
+        
+        self.directory = None
+        
+        # Advanced data structures
+        self.bst_by_id = AVLTree()
+        self.bst_by_name = AVLTree()
+        self.search_trie = Trie()
+        self.filtered_list = DoublyLinkedList()
+        
+        self.dl_array = []
+        self.current_selection = None
+        
+        self.build_ui()
+    
+    def build_ui(self):
+        # Top frame
+        top = tk.Frame(self.root)
+        top.pack(fill="x", padx=10, pady=10)
+        
+        tk.Label(top, text="Directory:").pack(side="left", padx=5)
+        
+        self.dir_entry = tk.Entry(top)
+        self.dir_entry.pack(side="left", fill="x", expand=True, padx=5)
+        
+        tk.Button(top, text="Browse", command=self.browse_directory).pack(side="left", padx=5)
+        tk.Button(top, text="Load", command=self.load_directory).pack(side="left", padx=5)
+        
+        # Search frame
+        search_frame = tk.Frame(self.root)
+        search_frame.pack(fill="x", padx=10, pady=5)
+        
+        tk.Label(search_frame, text="Search:").pack(side="left", padx=5)
+        
+        self.search_entry = tk.Entry(search_frame)
+        self.search_entry.pack(side="left", fill="x", expand=True, padx=5)
+        self.search_entry.bind("<KeyRelease>", lambda e: self.perform_search())
+        
+        tk.Button(search_frame, text="Clear", command=self.clear_search).pack(side="left", padx=5)
+        
+        tk.Label(search_frame, text="Sort:").pack(side="left", padx=5)
+        self.sort_var = tk.StringVar(value="ID")
+        tk.Radiobutton(search_frame, text="By ID", variable=self.sort_var,
+                      value="ID", command=self.update_list).pack(side="left")
+        tk.Radiobutton(search_frame, text="By Name", variable=self.sort_var,
+                      value="Name", command=self.update_list).pack(side="left")
+        
+        # Main content
+        content = tk.Frame(self.root)
+        content.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        # Left - List
+        list_frame = tk.Frame(content)
+        list_frame.pack(side="left", fill="both", expand=True)
+        
+        tk.Label(list_frame, text="Driver Licenses", font=("Arial", 10, "bold")).pack()
+        
+        list_scroll = tk.Scrollbar(list_frame)
+        list_scroll.pack(side="right", fill="y")
+        
+        self.dl_listbox = tk.Listbox(list_frame, yscrollcommand=list_scroll.set, font=("Courier", 10))
+        self.dl_listbox.pack(side="left", fill="both", expand=True)
+        list_scroll.config(command=self.dl_listbox.yview)
+        
+        self.dl_listbox.bind("<<ListboxSelect>>", self.on_select)
+        self.dl_listbox.bind("<Double-Button-1>", self.on_double_click)
+        
+        # Right - Details
+        detail_frame = tk.Frame(content, width=400)
+        detail_frame.pack(side="right", fill="both", padx=10)
+        
+        tk.Label(detail_frame, text="License Details", font=("Arial", 10, "bold")).pack()
+        
+        # Edit button
+        self.edit_btn = tk.Button(detail_frame, text="Edit License", 
+                                  command=self.open_editor, state="disabled")
+        self.edit_btn.pack(pady=5)
+        
+        # Image
+        self.image_frame = tk.Frame(detail_frame, width=200, height=200, bg="gray")
+        self.image_frame.pack(pady=10)
+        self.image_frame.pack_propagate(False)
+        
+        # Details
+        detail_scroll = tk.Scrollbar(detail_frame)
+        detail_scroll.pack(side="right", fill="y")
+        
+        self.detail_text = tk.Text(detail_frame, yscrollcommand=detail_scroll.set,
+                                   width=40, height=20, font=("Courier", 10), state="disabled")
+        self.detail_text.pack(side="left", fill="both", expand=True)
+        detail_scroll.config(command=self.detail_text.yview)
+        
+        # Status bar
+        status_frame = tk.Frame(self.root)
+        status_frame.pack(fill="x", padx=10, pady=5)
+        
+        self.status_label = tk.Label(status_frame, text="No directory loaded", anchor="w")
+        self.status_label.pack(fill="x")
+    
+    def browse_directory(self):
+        directory = filedialog.askdirectory(title="Select Directory with DL JSON files")
+        if directory:
+            self.dir_entry.delete(0, tk.END)
+            self.dir_entry.insert(0, directory)
+            self.load_directory()
+    
+    def load_directory(self):
+        directory = self.dir_entry.get().strip()
+        
+        if not os.path.exists(directory):
+            messagebox.showerror("Error", "Directory not found")
+            return
+        
+        if not os.path.isdir(directory):
+            messagebox.showerror("Error", "Path is not a directory")
+            return
+        
+        self.directory = directory
+        
+        # Clear all data structures
+        self.bst_by_id = AVLTree()
+        self.bst_by_name = AVLTree()
+        self.search_trie = Trie()
+        self.dl_array = []
+        self.filtered_list.clear()
+        
+        # Load all JSON files
+        for filename in os.listdir(directory):
+            if filename.endswith(".json"):
+                filepath = os.path.join(directory, filename)
+                try:
+                    with open(filepath, "r") as f:
+                        data = json.load(f)
+                    
+                    required_fields = ["DLID", "FName", "LName", "DOB"]
+                    if all(field in data for field in required_fields):
+                        dl_record = {
+                            "filename": filename,
+                            "filepath": filepath,
+                            "data": data
+                        }
+                        
+                        index = len(self.dl_array)
+                        self.dl_array.append(dl_record)
+                        
+                        dlid = data.get("DLID", "")
+                        last_name = data.get("LName", "").lower()
+                        first_name = data.get("FName", "").lower()
+                        name_key = f"{last_name}_{first_name}_{dlid}"
+                        
+                        self.bst_by_id.add(dlid, dl_record)
+                        self.bst_by_name.add(name_key, dl_record)
+                        
+                        searchable_fields = [
+                            str(data.get("DLID", "")),
+                            str(data.get("FName", "")),
+                            str(data.get("LName", "")),
+                            str(data.get("DOB", "")),
+                            str(data.get("Addr", "")),
+                            str(data.get("Sex", "")),
+                            str(data.get("Eyes", "")),
+                            str(data.get("Hair", ""))
+                        ]
+                        
+                        for field in searchable_fields:
+                            words = field.lower().split()
+                            for word in words:
+                                word = ''.join(c for c in word if c.isalnum())
+                                if word:
+                                    self.search_trie.insert(word, index)
+                
+                except Exception:
+                    pass
+        
+        self.reset_filtered_list()
+        self.update_list()
+        self.status_label.config(
+            text=f"Loaded {len(self.dl_array)} licenses | Using: AVL Tree, Trie, Doubly Linked List, Min Heap"
+        )
+    
+    def reset_filtered_list(self):
+        """Reset filtered list to show all records."""
+        self.filtered_list.clear()
+        
+        if self.sort_var.get() == "ID":
+            sorted_records = self.bst_by_id.get_sorted_list()
+        else:
+            sorted_records = self.bst_by_name.get_sorted_list()
+        
+        for record in sorted_records:
+            self.filtered_list.append(record)
+    
+    def update_list(self):
+        self.dl_listbox.delete(0, tk.END)
+        
+        display_list = self.filtered_list.to_list()
+        
+        for dl in display_list:
+            data = dl["data"]
+            dlid = data.get("DLID", "N/A")
+            fname = data.get("FName", "")
+            lname = data.get("LName", "")
+            
+            display = f"{dlid:12} - {lname}, {fname}"
+            self.dl_listbox.insert(tk.END, display)
+    
+    def perform_search(self):
+        query = self.search_entry.get().strip().lower()
+        
+        if not query:
+            self.reset_filtered_list()
+            self.update_list()
+            self.status_label.config(
+                text=f"Showing all {len(self.dl_array)} licenses"
+            )
+            return
+        
+        matching_indices = self.search_trie.search_substring(query)
+        
+        if not matching_indices:
+            self.filtered_list.clear()
+            self.update_list()
+            self.status_label.config(text="No matches found")
+            return
+        
+        heap = MinHeap()
+        
+        for idx in matching_indices:
+            if idx < len(self.dl_array):
+                dl_record = self.dl_array[idx]
+                data = dl_record["data"]
+                
+                searchable_text = " ".join([
+                    str(data.get("DLID", "")),
+                    str(data.get("FName", "")),
+                    str(data.get("LName", "")),
+                    str(data.get("DOB", "")),
+                    str(data.get("Addr", "")),
+                    str(data.get("Sex", "")),
+                    str(data.get("Eyes", "")),
+                    str(data.get("Hair", ""))
+                ]).lower()
+                
+                count = searchable_text.count(query)
+                priority = -count
+                
+                heap.insert(priority, dl_record)
+        
+        self.filtered_list.clear()
+        sorted_results = heap.get_sorted_list()
+        
+        for record in sorted_results:
+            self.filtered_list.append(record)
+        
+        self.update_list()
+        self.status_label.config(
+            text=f"Found {self.filtered_list.size} of {len(self.dl_array)} licenses | Ranked by relevance"
+        )
+    
+    def clear_search(self):
+        self.search_entry.delete(0, tk.END)
+        self.reset_filtered_list()
+        self.update_list()
+        self.status_label.config(
+            text=f"Showing all {len(self.dl_array)} licenses"
+        )
+    
+    def on_select(self, event):
+        selection = self.dl_listbox.curselection()
+        if not selection:
+            return
+        
+        index = selection[0]
+        display_list = self.filtered_list.to_list()
+        
+        if index < len(display_list):
+            dl = display_list[index]
+            self.current_selection = dl
+            self.display_details(dl["data"])
+    
+    def on_double_click(self, event):
+        """Open editor on double-click."""
+        if self.current_selection:
+            self.open_editor()
+    
+    def open_editor(self):
+        """Open the editor window for the selected license."""
+        if not self.current_selection:
+            return
+        
+        filepath = self.current_selection["filepath"]
+        DLEditorWindow(self.root, filepath, on_save_callback=self.refresh_current)
+    
+    def refresh_current(self):
+        """Refresh the viewer after editing."""
+        self.load_directory()
+        if self.current_selection:
+            # Try to re-select the same item
+            filepath = self.current_selection["filepath"]
+            for i, record in enumerate(self.filtered_list.to_list()):
+                if record["filepath"] == filepath or record["data"].get("DLID") == self.current_selection["data"].get("DLID"):
+                    self.dl_listbox.selection_clear(0, tk.END)
+                    self.dl_listbox.selection_set(i)
+                    self.dl_listbox.see(i)
+                    self.display_details(record["data"])
+                    self.current_selection = record
+                    break
+    
+    def display_details(self, data):
+        """Display license details."""
+        self.edit_btn.config(state="normal")
+        
+        # Clear image
+        for widget in self.image_frame.winfo_children():
+            widget.destroy()
+        
+        # Display image
+        try:
+            raw = base64.b64decode(data["Image"])
+            img = Image.open(io.BytesIO(raw))
+            img = img.resize((200, 200))
+            
+            photo = ImageTk.PhotoImage(img)
+            label = tk.Label(self.image_frame, image=photo, bg="gray")
+            label.image = photo
+            label.pack(expand=True)
+        except Exception:
+            label = tk.Label(self.image_frame, text="Image\nLoad Error",
+                           bg="gray", fg="white", font=("Arial", 12))
+            label.pack(expand=True)
+        
+        # Display text
+        self.detail_text.config(state="normal")
+        self.detail_text.delete("1.0", tk.END)
+        
+        details = []
+        field_order = [
+            "DLID", "FName", "LName", "DOB", "Addr", "Sex",
+            "Height", "Weight", "Eyes", "Hair", "Vision",
+            "AssDate", "ExpDate", "Strikes", "Donor", "Suspended"
+        ]
+        
+        for field in field_order:
+            if field in data:
+                value = data[field]
+                
+                if field == "Vision":
+                    value = "Fair" if value == 1 else "Poor"
+                elif field == "Donor":
+                    value = "Yes" if value == 1 else "No"
+                elif field == "Suspended":
+                    value = "YES" if value == 1 else "No"
+                
+                details.append(f"{field:12}: {value}")
+        
+        # Warnings
+        warnings = []
+        try:
+            exp_date = datetime.strptime(data["ExpDate"], DATE_FMT)
+            if datetime.now() >= exp_date:
+                warnings.append("⚠ LICENSE EXPIRED")
+        except:
+            pass
+        
+        if data.get("Suspended", 0) == 1:
+            warnings.append("⚠ LICENSE SUSPENDED")
+        
+        if data.get("Strikes", 0) >= 15:
+            warnings.append("⚠ STRIKE LIMIT EXCEEDED")
+        
+        if data.get("Vision", 1) == 0:
+            warnings.append("⚠ POOR VISION")
+        
+        if warnings:
+            self.detail_text.insert("1.0", "\n".join(warnings) + "\n\n", "warning")
+            self.detail_text.tag_config("warning", foreground="red", font=("Courier", 10, "bold"))
+        
+        self.detail_text.insert(tk.END, "\n".join(details))
+        self.detail_text.config(state="disabled")
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    DLViewer(root)
+    root.mainloop()

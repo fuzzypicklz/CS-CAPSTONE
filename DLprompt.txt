@@ -1,0 +1,47 @@
+create DL.py such that:
+
+when it runs it opens a GUI
+within the GUI, when no file is selected, display an empty black rectangle that says "NO ID FOUND"
+at the top of the GUI, there is a search bar that takes a direct file path input for jsons
+If a json follows the following format, display its information within the GUI on the screen
+
+I1234567.json:
+
+{
+    DLID: "I1234567"
+    FName: "First Name",
+    LName: "Last Name",
+    DOB: "MM/DD/YYYY",
+    Addr: "308 Negra Arroyo Lane, Albuquerque, NM, 87104"
+    Sex: "M/F",
+    Height: "6'7\"",
+    Weight: "200",
+    Eyes: "brown",
+    Hair: "black",
+    Vision: 0-1, (0 = poor; 1 = fair)
+    Image: "base 64 encoded image string goes here",
+    AssDate: "MM/DD/YYYY",
+    ExpDate: "MM/DD/YYYY",
+    Strikes: 1-15,
+    Donor: 0-1,
+    Suspended: 0-1
+}
+
+when a DL is open, display a toggle in the top right corner to enable editing
+when editing is enabled all text fields can be clicked and edited
+when editing is enabled, prompt the user with a file path to a new image when the image is clicked
+The image is cropped to be a square no matter its prior resolution
+if donor is true display the card on a golden background
+if the DLID is changed, change the filename to match it
+add the option to create an empty DL and when the button is clicked, create an empty DL and enable editing
+
+when opening a DL, check that:
+-the AssDate is at least 16 years after the DOB
+-the current date is before the ExpDate
+-the strikes are less than 15
+-the vision is not poor
+
+if any of these are true suspend the license and display a red "SUSPENDED" stamp on the license
+
+create another script that can view a directory of jsons of the DL datatype
+allow it to search for a person using any of the information in stored in the json
